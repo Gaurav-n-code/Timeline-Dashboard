@@ -165,7 +165,7 @@ export function HourlySummaryTable({
               {
                 label: 'Total',
                 getValue: (row: (typeof rows)[number]) => row.totalCount,
-                emphasize: true,
+                emphasize: false,
               },
               {
                 label: 'Pass',

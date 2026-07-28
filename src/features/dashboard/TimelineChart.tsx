@@ -438,7 +438,7 @@ export function TimelineChart({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, []);
+  }, [model, status]);
 
   useEffect(() => {
     if (!model) {
