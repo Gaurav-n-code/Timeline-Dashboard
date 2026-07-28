@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient } from '../../lib/api/client';
 import { AuthContext } from './authContextValue';
@@ -15,14 +15,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isHydrating, setIsHydrating] = useState(Boolean(token));
 
+  const clearSession = useCallback(() => {
+    clearStoredToken();
+    setToken(null);
+    setUser(null);
+  }, []);
+
   useEffect(() => {
     const responseInterceptor = apiClient.interceptors.response.use(
       (response) => response,
       async (error) => {
         if (error?.response?.status === 401) {
-          clearStoredToken();
-          setToken(null);
-          setUser(null);
+          clearSession();
         }
 
         return Promise.reject(error);
@@ -32,7 +36,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       apiClient.interceptors.response.eject(responseInterceptor);
     };
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     let active = true;
@@ -58,12 +62,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setToken(storedToken);
         setUser(currentUser);
       } catch {
-        clearStoredToken();
-
-        if (active) {
-          setToken(null);
-          setUser(null);
-        }
+        clearSession();
       } finally {
         if (active) {
           setIsHydrating(false);
@@ -76,9 +75,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [clearSession]);
 
-  async function login(credentials: LoginCredentials) {
+  const login = useCallback(async (credentials: LoginCredentials) => {
     const result = await loginRequest(credentials);
     storeToken(result.access_token);
     setToken(result.access_token);
@@ -88,30 +87,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(currentUser);
       return currentUser;
     } catch (error) {
-      clearStoredToken();
-      setToken(null);
-      setUser(null);
+      clearSession();
       throw error;
     }
-  }
+  }, [clearSession]);
 
-  async function logout() {
+  const logout = useCallback(async () => {
     try {
       await logoutRequest();
     } finally {
-      clearStoredToken();
-      setToken(null);
-      setUser(null);
+      clearSession();
     }
-  }
+  }, [clearSession]);
 
-  async function refreshSession() {
+  const refreshSession = useCallback(async () => {
     const storedToken = getStoredToken();
 
     if (!storedToken) {
-      clearStoredToken();
-      setToken(null);
-      setUser(null);
+      clearSession();
       return null;
     }
 
@@ -121,18 +114,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(currentUser);
       return currentUser;
     } catch {
-      clearStoredToken();
-      setToken(null);
-      setUser(null);
+      clearSession();
       return null;
     }
-  }
-
-  function clearSession() {
-    clearStoredToken();
-    setToken(null);
-    setUser(null);
-  }
+  }, [clearSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -145,7 +130,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       refreshSession,
       clearSession,
     }),
-    [isHydrating, token, user],
+    [clearSession, isHydrating, login, logout, refreshSession, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

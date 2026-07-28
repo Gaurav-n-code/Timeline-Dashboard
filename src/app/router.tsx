@@ -3,6 +3,8 @@ import { RootLayout } from '../routes/RootLayout';
 import { LoginPage } from '../routes/LoginPage';
 import { DashboardPage } from '../routes/DashboardPage';
 import { NotFoundPage } from '../routes/NotFoundPage';
+import { ProtectedRoute } from '../routes/ProtectedRoute';
+import { PublicRoute } from '../routes/PublicRoute';
 
 export const router = createBrowserRouter([
   {
@@ -10,16 +12,26 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       {
-        index: true,
-        element: <LoginPage />,
+        element: <PublicRoute />,
+        children: [
+          {
+            index: true,
+            element: <LoginPage />,
+          },
+          {
+            path: 'login',
+            element: <LoginPage />,
+          },
+        ],
       },
       {
-        path: 'login',
-        element: <LoginPage />,
-      },
-      {
-        path: 'dashboard',
-        element: <DashboardPage />,
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: 'dashboard',
+            element: <DashboardPage />,
+          },
+        ],
       },
       {
         path: '*',
