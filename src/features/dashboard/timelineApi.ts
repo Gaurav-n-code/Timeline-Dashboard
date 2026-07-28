@@ -1,5 +1,5 @@
-import { isAxiosError } from 'axios';
 import { apiClient } from '../../lib/api/client';
+import { isRetryableApiError } from '../../lib/api/errorUtils';
 import { buildIstShiftWindow } from './timelineTime';
 
 export type MachineIntervalEntityScope = {
@@ -219,11 +219,7 @@ export function isMachineIntervalsEmpty(data: ParsedMachineIntervals) {
 }
 
 function shouldRetryRequest(error: unknown) {
-  if (!isAxiosError(error)) {
-    return false;
-  }
-
-  return error.response?.status === 500;
+  return isRetryableApiError(error);
 }
 
 async function fetchMachineIntervalsOnce(request: MachineIntervalsRequest) {

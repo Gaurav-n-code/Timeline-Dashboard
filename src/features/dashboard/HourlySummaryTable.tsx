@@ -23,6 +23,8 @@ type HourlySummaryTableProps = {
   request: MachineIntervalsRequest | null;
   data: ParsedMachineIntervals | null;
   cycleMetrics: ParsedHourlyCycleMetricsBucket[] | null;
+  cycleMetricsStatus: TimelineStatus;
+  cycleMetricsError: string;
   status: TimelineStatus;
   error: string;
   onRetry: () => void;
@@ -44,6 +46,8 @@ export function HourlySummaryTable({
   request,
   data,
   cycleMetrics,
+  cycleMetricsStatus,
+  cycleMetricsError,
   status,
   error,
   onRetry,
@@ -111,6 +115,12 @@ export function HourlySummaryTable({
       </Box>
 
       <Divider />
+
+      {cycleMetricsStatus === 'error' ? (
+        <Alert severity="warning" action={<Button onClick={onRetry}>Retry</Button>}>
+          {cycleMetricsError || 'Cycle-time metrics could not be loaded.'}
+        </Alert>
+      ) : null}
 
       <TableContainer
         sx={{

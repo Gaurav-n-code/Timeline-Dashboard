@@ -1,5 +1,5 @@
-import { isAxiosError } from 'axios';
 import { apiClient } from '../../lib/api/client';
+import { isRetryableApiError } from '../../lib/api/errorUtils';
 import type { MachineIntervalsRequest } from './timelineApi';
 
 type Envelope<T> = {
@@ -53,11 +53,7 @@ function unwrap<T>(response: { data: Envelope<T> }) {
 }
 
 function shouldRetryRequest(error: unknown) {
-  if (!isAxiosError(error)) {
-    return false;
-  }
-
-  return error.response?.status === 500;
+  return isRetryableApiError(error);
 }
 
 export function buildHourlyCycleMetricsRequest(

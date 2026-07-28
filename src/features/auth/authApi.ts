@@ -13,6 +13,7 @@ function unwrap<T>(response: { data: Envelope<T> }) {
 
   if (payload.status_code >= 400) {
     const error = new Error(payload.message || 'Request failed');
+    (error as Error & { status?: number }).status = payload.status_code;
     throw error;
   }
 

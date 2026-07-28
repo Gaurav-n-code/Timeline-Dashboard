@@ -13,6 +13,7 @@ import {
 import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/useAuth';
+import { getApiErrorMessage } from '../lib/api/errorUtils';
 
 type LoginFormState = {
   username: string;
@@ -22,31 +23,13 @@ type LoginFormState = {
 type FieldErrors = Partial<Record<keyof LoginFormState, string>>;
 
 function getErrorMessage(error: unknown) {
-  if (isAxiosError(error)) {
-    const data = error.response?.data as { message?: string } | undefined;
+  const message = getApiErrorMessage(error, 'Unable to sign in. Please try again.');
 
-    if (data?.message) {
-      return data.message;
-    }
-
-    if (error.response?.status === 401) {
-      return 'Invalid username or password.';
-    }
-
-    if (error.response?.status === 403) {
-      return 'Access denied.';
-    }
-
-    if (error.response?.status === 422) {
-      return 'Please check the form inputs and try again.';
-    }
+  if (isAxiosError(error) && error.response?.status === 401) {
+    return 'Invalid username or password.';
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return 'Unable to sign in. Please try again.';
+  return message;
 }
 
 export function LoginPage() {

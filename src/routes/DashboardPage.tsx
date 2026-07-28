@@ -29,6 +29,7 @@ import {
   parseMachineIntervalsResponse,
   type ParsedMachineIntervals,
 } from '../features/dashboard/timelineApi';
+import { getApiErrorMessage } from '../lib/api/errorUtils';
 import type {
   AssetTreeNode,
   DashboardFilterOption,
@@ -52,14 +53,6 @@ function getDefaultAssetId(options: DashboardFilterOption[]) {
   return options[0]?.id ?? '';
 }
 
-function getTimelineErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return 'Failed to load timeline data.';
-}
-
 export function DashboardPage() {
   const [assets, setAssets] = useState<AssetTreeNode[]>([]);
   const [shifts, setShifts] = useState<ShiftDefinition[]>([]);
@@ -81,6 +74,7 @@ export function DashboardPage() {
     null,
   );
   const [cycleMetricsStatus, setCycleMetricsStatus] = useState<TimelineStatus>('idle');
+  const [cycleMetricsError, setCycleMetricsError] = useState('');
 
   const requestSequenceRef = useRef(0);
 
@@ -143,8 +137,7 @@ export function DashboardPage() {
         };
       });
     } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : 'Failed to load filters.';
+      const message = getApiErrorMessage(requestError, 'Failed to load filters.');
       setFilterError(message);
     } finally {
       setIsLoadingFilters(false);
@@ -163,6 +156,7 @@ export function DashboardPage() {
       setTimelineError('');
       setCycleMetricsStatus('idle');
       setCycleMetricsData(null);
+      setCycleMetricsError('');
       return;
     }
 
@@ -176,6 +170,7 @@ export function DashboardPage() {
     setTimelineData(null);
     setCycleMetricsStatus('loading');
     setCycleMetricsData(null);
+    setCycleMetricsError('');
 
     async function loadTimelineData() {
       try {
@@ -207,7 +202,7 @@ export function DashboardPage() {
           return;
         }
 
-        setTimelineError(getTimelineErrorMessage(error));
+        setTimelineError(getApiErrorMessage(error, 'Failed to load timeline data.'));
         setTimelineStatus('error');
       }
     }
@@ -226,13 +221,16 @@ export function DashboardPage() {
 
         setCycleMetricsData(response);
         setCycleMetricsStatus('ready');
-      } catch {
+      } catch (error) {
         if (!isActive || requestSequenceRef.current !== sequence) {
           return;
         }
 
         setCycleMetricsData(null);
-        setCycleMetricsStatus('ready');
+        setCycleMetricsError(
+          getApiErrorMessage(error, 'Failed to load hourly cycle metrics.'),
+        );
+        setCycleMetricsStatus('error');
       }
     }
 
@@ -271,9 +269,14 @@ export function DashboardPage() {
     }));
   }
 
-  function handleRetryTimeline() {
+  function handleRefreshAnalytics() {
     setTimelineRetryCount((current) => current + 1);
   }
+
+  const summaryStatus =
+    timelineStatus === 'loading' || cycleMetricsStatus === 'loading'
+      ? 'loading'
+      : timelineStatus;
 
   return (
     <Stack spacing={3}>
@@ -421,13 +424,39 @@ export function DashboardPage() {
         }}
       >
         <Stack spacing={2}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ xs: 'flex-start', sm: 'center' }}
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Analytics
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Timeline, summary, and cycle metrics refresh together.
+              </Typography>
+            </Box>
+
+            <Button
+              variant="outlined"
+              onClick={handleRefreshAnalytics}
+              disabled={timelineStatus === 'loading' || cycleMetricsStatus === 'loading'}
+            >
+              {timelineStatus === 'loading' || cycleMetricsStatus === 'loading'
+                ? 'Refreshing...'
+                : 'Refresh analytics'}
+            </Button>
+          </Stack>
+
           <TimelineChart
             request={timelineRequest}
             data={timelineData}
             status={timelineStatus}
             error={timelineError}
             showIndividualProduces={filterState.showIndividualProduces}
-            onRetry={handleRetryTimeline}
+            onRetry={handleRefreshAnalytics}
           />
         </Stack>
       </Paper>
@@ -441,14 +470,16 @@ export function DashboardPage() {
           borderColor: 'divider',
         }}
       >
-          <HourlySummaryTable
-            request={timelineRequest}
-            data={timelineData}
-            cycleMetrics={cycleMetricsData}
-            status={timelineStatus === 'loading' || cycleMetricsStatus === 'loading' ? 'loading' : timelineStatus}
-            error={timelineError}
-            onRetry={handleRetryTimeline}
-          />
+        <HourlySummaryTable
+          request={timelineRequest}
+          data={timelineData}
+          cycleMetrics={cycleMetricsData}
+          status={summaryStatus}
+          error={timelineError}
+          cycleMetricsStatus={cycleMetricsStatus}
+          cycleMetricsError={cycleMetricsError}
+          onRetry={handleRefreshAnalytics}
+        />
       </Paper>
     </Stack>
   );
