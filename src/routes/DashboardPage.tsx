@@ -15,6 +15,11 @@ import {
 } from '@mui/material';
 import { getAssetsTreeRequest, getShiftsRequest } from '../features/dashboard/dashboardApi';
 import { HourlySummaryTable } from '../features/dashboard/HourlySummaryTable';
+import {
+  buildHourlyCycleMetricsRequest,
+  getHourlyCycleMetricsRequest,
+  type ParsedHourlyCycleMetricsBucket,
+} from '../features/dashboard/cycleMetricsApi';
 import { getDefaultTimelineDateValue } from '../features/dashboard/dateUtils';
 import { flattenAssetTree } from '../features/dashboard/dashboardUtils';
 import { TimelineChart } from '../features/dashboard/TimelineChart';
@@ -72,6 +77,10 @@ export function DashboardPage() {
   const [timelineStatus, setTimelineStatus] = useState<TimelineStatus>('idle');
   const [timelineError, setTimelineError] = useState('');
   const [timelineRetryCount, setTimelineRetryCount] = useState(0);
+  const [cycleMetricsData, setCycleMetricsData] = useState<ParsedHourlyCycleMetricsBucket[] | null>(
+    null,
+  );
+  const [cycleMetricsStatus, setCycleMetricsStatus] = useState<TimelineStatus>('idle');
 
   const requestSequenceRef = useRef(0);
 
@@ -152,6 +161,8 @@ export function DashboardPage() {
       setTimelineStatus('idle');
       setTimelineData(null);
       setTimelineError('');
+      setCycleMetricsStatus('idle');
+      setCycleMetricsData(null);
       return;
     }
 
@@ -163,6 +174,8 @@ export function DashboardPage() {
     setTimelineStatus('loading');
     setTimelineError('');
     setTimelineData(null);
+    setCycleMetricsStatus('loading');
+    setCycleMetricsData(null);
 
     async function loadTimelineData() {
       try {
@@ -200,6 +213,30 @@ export function DashboardPage() {
     }
 
     void loadTimelineData();
+
+    async function loadCycleMetricsData() {
+      try {
+        const response = await getHourlyCycleMetricsRequest(
+          buildHourlyCycleMetricsRequest(request),
+        );
+
+        if (!isActive || requestSequenceRef.current !== sequence) {
+          return;
+        }
+
+        setCycleMetricsData(response);
+        setCycleMetricsStatus('ready');
+      } catch {
+        if (!isActive || requestSequenceRef.current !== sequence) {
+          return;
+        }
+
+        setCycleMetricsData(null);
+        setCycleMetricsStatus('ready');
+      }
+    }
+
+    void loadCycleMetricsData();
 
     return () => {
       isActive = false;
@@ -404,13 +441,14 @@ export function DashboardPage() {
           borderColor: 'divider',
         }}
       >
-        <HourlySummaryTable
-          request={timelineRequest}
-          data={timelineData}
-          status={timelineStatus}
-          error={timelineError}
-          onRetry={handleRetryTimeline}
-        />
+          <HourlySummaryTable
+            request={timelineRequest}
+            data={timelineData}
+            cycleMetrics={cycleMetricsData}
+            status={timelineStatus === 'loading' || cycleMetricsStatus === 'loading' ? 'loading' : timelineStatus}
+            error={timelineError}
+            onRetry={handleRetryTimeline}
+          />
       </Paper>
     </Stack>
   );

@@ -1,4 +1,5 @@
 import type { MachineIntervalsRequest, ParsedMachineIntervals, ParsedTimelineSegment } from './timelineApi';
+import type { ParsedHourlyCycleMetricsBucket } from './cycleMetricsApi';
 
 const IST_TIME_ZONE = 'Asia/Kolkata';
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -27,6 +28,8 @@ export type HourlySummaryRow = {
   passCount: number;
   failCount: number;
   totalCount: number;
+  idealCycleTimeSeconds: number | null;
+  actualCycleTimeSeconds: number | null;
 };
 
 function toLocalMs(utcMs: number) {
@@ -78,6 +81,8 @@ function createHourRows(startUtcMs: number, endUtcMs: number) {
       passCount: 0,
       failCount: 0,
       totalCount: 0,
+      idealCycleTimeSeconds: null,
+      actualCycleTimeSeconds: null,
     };
 
     rowsByStart.set(hourStartLocalMs, row);
@@ -160,9 +165,27 @@ function addProduceFallback(rowsByStart: Map<number, HourlySummaryRow>, data: Pa
   }
 }
 
+function addCycleMetrics(
+  rowsByStart: Map<number, HourlySummaryRow>,
+  cycleMetrics: ParsedHourlyCycleMetricsBucket[] | null | undefined,
+) {
+  for (const metric of cycleMetrics ?? []) {
+    const rowStartLocalMs = floorToLocalHourMs(metric.bucketStartMs);
+    const row = rowsByStart.get(rowStartLocalMs);
+
+    if (!row) {
+      continue;
+    }
+
+    row.idealCycleTimeSeconds = metric.idealCycleTimeSeconds;
+    row.actualCycleTimeSeconds = metric.actualCycleTimeSeconds;
+  }
+}
+
 export function buildHourlySummaryRows(
   request: MachineIntervalsRequest | null,
   data: ParsedMachineIntervals | null,
+  cycleMetrics: ParsedHourlyCycleMetricsBucket[] | null | undefined = null,
 ) {
   if (!request || !data) {
     return [];
@@ -194,10 +217,19 @@ export function buildHourlySummaryRows(
 
   addProduceCounts(rowsByStart, data);
   addProduceFallback(rowsByStart, data);
+  addCycleMetrics(rowsByStart, cycleMetrics);
 
   return [...rowsByStart.values()].sort((left, right) => left.hourStartMs - right.hourStartMs);
 }
 
 export function formatMinutes(value: number) {
+  return minuteFormatter.format(Math.max(0, value));
+}
+
+export function formatSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
   return minuteFormatter.format(Math.max(0, value));
 }

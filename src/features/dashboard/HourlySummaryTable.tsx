@@ -14,20 +14,26 @@ import {
   Typography,
 } from '@mui/material';
 import type { MachineIntervalsRequest, ParsedMachineIntervals } from './timelineApi';
-import { buildHourlySummaryRows, formatMinutes } from './hourlySummary';
+import type { ParsedHourlyCycleMetricsBucket } from './cycleMetricsApi';
+import { buildHourlySummaryRows, formatMinutes, formatSeconds } from './hourlySummary';
 
 type TimelineStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 type HourlySummaryTableProps = {
   request: MachineIntervalsRequest | null;
   data: ParsedMachineIntervals | null;
+  cycleMetrics: ParsedHourlyCycleMetricsBucket[] | null;
   status: TimelineStatus;
   error: string;
   onRetry: () => void;
 };
 
-function formatRowValue(value: number) {
-  return formatMinutes(value);
+function formatRowValue(value: number | null, kind: 'minutes' | 'seconds') {
+  if (kind === 'minutes') {
+    return formatMinutes(value ?? 0);
+  }
+
+  return formatSeconds(value);
 }
 
 function getColumnMinWidth(columnCount: number) {
@@ -37,11 +43,12 @@ function getColumnMinWidth(columnCount: number) {
 export function HourlySummaryTable({
   request,
   data,
+  cycleMetrics,
   status,
   error,
   onRetry,
 }: HourlySummaryTableProps) {
-  const rows = buildHourlySummaryRows(request, data);
+  const rows = buildHourlySummaryRows(request, data, cycleMetrics);
 
   if (status === 'loading') {
     return (
@@ -175,6 +182,16 @@ export function HourlySummaryTable({
                 getValue: (row: (typeof rows)[number]) => row.stoppageMinutes,
                 emphasize: false,
               },
+              {
+                label: 'Ideal Cycle Time (s)',
+                getValue: (row: (typeof rows)[number]) => row.idealCycleTimeSeconds,
+                emphasize: false,
+              },
+              {
+                label: 'Actual Cycle Time (s)',
+                getValue: (row: (typeof rows)[number]) => row.actualCycleTimeSeconds,
+                emphasize: false,
+              },
             ].map((metric) => (
               <TableRow key={metric.label} sx={metric.emphasize ? { bgcolor: 'action.hover' } : undefined}>
                 <TableCell
@@ -198,7 +215,10 @@ export function HourlySummaryTable({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {formatRowValue(metric.getValue(row))}
+                    {formatRowValue(
+                      metric.getValue(row),
+                      metric.label.includes('(s)') ? 'seconds' : 'minutes',
+                    )}
                   </TableCell>
                 ))}
               </TableRow>
