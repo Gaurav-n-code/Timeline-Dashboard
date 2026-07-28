@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -12,10 +13,16 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { ChangeEvent } from 'react';
 import { getAssetsTreeRequest, getShiftsRequest } from '../features/dashboard/dashboardApi';
 import { getTodayDateValue } from '../features/dashboard/dateUtils';
 import { flattenAssetTree } from '../features/dashboard/dashboardUtils';
+import {
+  buildMachineIntervalsRequest,
+  getMachineIntervalsRequest,
+  isMachineIntervalsEmpty,
+  parseMachineIntervalsResponse,
+  type ParsedMachineIntervals,
+} from '../features/dashboard/timelineApi';
 import type {
   AssetTreeNode,
   DashboardFilterOption,
@@ -29,6 +36,8 @@ type FilterState = {
   showIndividualProduces: boolean;
 };
 
+type TimelineStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+
 function getDefaultShiftId(shifts: ShiftDefinition[]) {
   return shifts.find((shift) => shift.is_active)?.id ?? shifts[0]?.id ?? '';
 }
@@ -37,12 +46,24 @@ function getDefaultAssetId(options: DashboardFilterOption[]) {
   return options[0]?.id ?? '';
 }
 
+function getTimelineErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return 'Failed to load timeline data.';
+}
+
+function formatUtcRangeLabel(fromTs: string, toTs: string) {
+  return `${fromTs} to ${toTs}`;
+}
+
 export function DashboardPage() {
   const [assets, setAssets] = useState<AssetTreeNode[]>([]);
   const [shifts, setShifts] = useState<ShiftDefinition[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState('');
+  const [isLoadingFilters, setIsLoadingFilters] = useState(true);
+  const [isRefreshingFilters, setIsRefreshingFilters] = useState(false);
+  const [filterError, setFilterError] = useState('');
   const [filterState, setFilterState] = useState<FilterState>({
     assetId: '',
     shiftId: '',
@@ -50,18 +71,47 @@ export function DashboardPage() {
     showIndividualProduces: false,
   });
 
+  const [timelineData, setTimelineData] = useState<ParsedMachineIntervals | null>(null);
+  const [timelineStatus, setTimelineStatus] = useState<TimelineStatus>('idle');
+  const [timelineError, setTimelineError] = useState('');
+  const [timelineRetryCount, setTimelineRetryCount] = useState(0);
+
+  const requestSequenceRef = useRef(0);
+
   const assetOptions = useMemo(() => flattenAssetTree(assets), [assets]);
   const selectedAsset = assetOptions.find((option) => option.id === filterState.assetId) ?? null;
   const selectedShift = shifts.find((shift) => shift.id === filterState.shiftId) ?? null;
 
-  const loadFilterData = useCallback(async ({ isManualRefresh = false } = {}) => {
-    if (isManualRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
+  const timelineRequest = useMemo(() => {
+    if (!selectedAsset || !selectedShift || !filterState.date) {
+      return null;
     }
 
-    setError('');
+    return buildMachineIntervalsRequest({
+      assetId: selectedAsset.id,
+      assetLevelId: selectedAsset.assetLevelId,
+      date: filterState.date,
+      shiftTimings: selectedShift.shift_timings,
+      exactProduces: filterState.showIndividualProduces,
+    });
+  }, [filterState.date, filterState.showIndividualProduces, selectedAsset, selectedShift]);
+
+  const selectedShiftLabel = selectedShift
+    ? `${selectedShift.name} (${selectedShift.shift_timings[0]} - ${selectedShift.shift_timings[1]})`
+    : '';
+
+  const selectedRequestWindow = timelineRequest
+    ? formatUtcRangeLabel(timelineRequest.time_range.from_ts, timelineRequest.time_range.to_ts)
+    : '';
+
+  const loadFilterData = useCallback(async ({ isManualRefresh = false } = {}) => {
+    if (isManualRefresh) {
+      setIsRefreshingFilters(true);
+    } else {
+      setIsLoadingFilters(true);
+    }
+
+    setFilterError('');
 
     try {
       const [nextAssets, nextShifts] = await Promise.all([
@@ -91,17 +141,70 @@ export function DashboardPage() {
         };
       });
     } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : 'Failed to load filters.';
-      setError(message);
+      const message =
+        requestError instanceof Error ? requestError.message : 'Failed to load filters.';
+      setFilterError(message);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setIsLoadingFilters(false);
+      setIsRefreshingFilters(false);
     }
   }, []);
 
   useEffect(() => {
     void loadFilterData();
   }, [loadFilterData]);
+
+  useEffect(() => {
+    if (!timelineRequest) {
+      setTimelineStatus('idle');
+      setTimelineData(null);
+      setTimelineError('');
+      return;
+    }
+
+    let isActive = true;
+    const sequence = requestSequenceRef.current + 1;
+    requestSequenceRef.current = sequence;
+    const request = timelineRequest;
+
+    setTimelineStatus('loading');
+    setTimelineError('');
+    setTimelineData(null);
+
+    async function loadTimelineData() {
+      try {
+        const response = await getMachineIntervalsRequest(request);
+
+        if (!isActive || requestSequenceRef.current !== sequence) {
+          return;
+        }
+
+        const parsed = parseMachineIntervalsResponse(response);
+
+        if (isMachineIntervalsEmpty(parsed)) {
+          setTimelineData(parsed);
+          setTimelineStatus('empty');
+          return;
+        }
+
+        setTimelineData(parsed);
+        setTimelineStatus('ready');
+      } catch (error) {
+        if (!isActive || requestSequenceRef.current !== sequence) {
+          return;
+        }
+
+        setTimelineError(getTimelineErrorMessage(error));
+        setTimelineStatus('error');
+      }
+    }
+
+    void loadTimelineData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [timelineRequest, timelineRetryCount]);
 
   function handleAssetChange(_: unknown, value: DashboardFilterOption | null) {
     setFilterState((current) => ({
@@ -131,9 +234,85 @@ export function DashboardPage() {
     }));
   }
 
-  const selectedShiftLabel = selectedShift
-    ? `${selectedShift.name} (${selectedShift.shift_timings[0]} - ${selectedShift.shift_timings[1]})`
-    : '';
+  function handleRetryTimeline() {
+    setTimelineRetryCount((current) => current + 1);
+  }
+
+  function renderTimelineContent() {
+    if (timelineStatus === 'idle') {
+      return (
+        <Alert severity="info">
+          Select a machine, shift, and date to load the machine intervals response.
+        </Alert>
+      );
+    }
+
+    if (timelineStatus === 'loading') {
+      return (
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <CircularProgress size={20} />
+          <Typography variant="body2" color="text.secondary">
+            Loading machine intervals...
+          </Typography>
+        </Stack>
+      );
+    }
+
+    if (timelineStatus === 'error') {
+      return (
+        <Stack spacing={2}>
+          <Alert severity="error">{timelineError}</Alert>
+          <Box>
+            <Button variant="outlined" onClick={handleRetryTimeline}>
+              Retry
+            </Button>
+          </Box>
+        </Stack>
+      );
+    }
+
+    if (timelineStatus === 'empty') {
+      return (
+        <Alert severity="info">
+          No timeline data was returned for the selected filter combination.
+        </Alert>
+      );
+    }
+
+    if (!timelineData) {
+      return null;
+    }
+
+    return (
+      <Stack spacing={1.5}>
+        <Alert severity="success">Timeline data loaded successfully.</Alert>
+
+        <Stack spacing={0.75}>
+          <Typography variant="body2" color="text.secondary">
+            Request window: {selectedRequestWindow}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Machine IDs: {timelineData.machineIds.length}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Runtime segments: {timelineData.runtimes.length}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Downtime segments: {timelineData.downtimes.length}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Stoppage segments: {timelineData.stoppages.length}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Produce count buckets: {timelineData.produceCounts.length}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Individual produces parsed: {timelineData.produces.length}
+          </Typography>
+        </Stack>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
@@ -160,39 +339,39 @@ export function DashboardPage() {
               Dashboard Filters
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Filter metadata is loaded. Timeline data will be connected in the next phase.
+              Filter metadata is loaded. Timeline data is fetched in the background.
             </Typography>
           </Box>
 
           <Button
             variant="outlined"
             onClick={() => loadFilterData({ isManualRefresh: true })}
-            disabled={isLoading || isRefreshing}
+            disabled={isLoadingFilters || isRefreshingFilters}
           >
-            {isLoading || isRefreshing ? 'Refreshing...' : 'Refresh'}
+            {isLoadingFilters || isRefreshingFilters ? 'Refreshing...' : 'Refresh'}
           </Button>
         </Stack>
 
-        {error ? <Alert severity="error">{error}</Alert> : null}
+        {filterError ? <Alert severity="error">{filterError}</Alert> : null}
 
         <Stack spacing={2.5}>
           <Autocomplete
             options={assetOptions}
             value={selectedAsset}
             onChange={handleAssetChange}
-            loading={isLoading && assetOptions.length === 0}
+            loading={isLoadingFilters && assetOptions.length === 0}
             getOptionLabel={(option) => option.label}
             isOptionEqualToValue={(option, value) => option.id === value.id}
             renderInput={(params) => (
               <TextField
                 {...params}
                 label="Machine / Line"
-                placeholder={isLoading ? 'Loading assets...' : 'Select a machine or line'}
+                placeholder={isLoadingFilters ? 'Loading assets...' : 'Select a machine or line'}
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
                     <>
-                      {isLoading && assetOptions.length === 0 ? (
+                      {isLoadingFilters && assetOptions.length === 0 ? (
                         <CircularProgress color="inherit" size={18} />
                       ) : null}
                       {params.InputProps.endAdornment}
@@ -201,7 +380,7 @@ export function DashboardPage() {
                 }}
               />
             )}
-            disabled={isLoading || assetOptions.length === 0}
+            disabled={isLoadingFilters || assetOptions.length === 0}
           />
 
           <TextField
@@ -210,10 +389,10 @@ export function DashboardPage() {
             value={filterState.shiftId}
             onChange={handleShiftChange}
             SelectProps={{ native: true }}
-            disabled={isLoading || shifts.length === 0}
+            disabled={isLoadingFilters || shifts.length === 0}
           >
             <option value="" disabled>
-              {isLoading ? 'Loading shifts...' : 'Select a shift'}
+              {isLoadingFilters ? 'Loading shifts...' : 'Select a shift'}
             </option>
             {shifts.map((shift) => (
               <option key={shift.id} value={shift.id}>
@@ -228,7 +407,7 @@ export function DashboardPage() {
             value={filterState.date}
             onChange={handleDateChange}
             InputLabelProps={{ shrink: true }}
-            disabled={isLoading}
+            disabled={isLoadingFilters}
           />
 
           <FormControlLabel
@@ -268,6 +447,23 @@ export function DashboardPage() {
           <Typography variant="body2" color="text.secondary">
             Individual produces: {filterState.showIndividualProduces ? 'On' : 'Off'}
           </Typography>
+        </Stack>
+      </Paper>
+
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 2.5, sm: 3 },
+          borderRadius: 4,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Stack spacing={2}>
+          <Typography variant="h6" fontWeight={700}>
+            Machine Intervals
+          </Typography>
+          {renderTimelineContent()}
         </Stack>
       </Paper>
     </Stack>
