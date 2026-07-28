@@ -5,6 +5,7 @@ import { DashboardPage } from '../routes/DashboardPage';
 import { NotFoundPage } from '../routes/NotFoundPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { PublicRoute } from '../routes/PublicRoute';
+import { AppLayout } from '../layouts/AppLayout';
 
 export const router = createBrowserRouter([
   {
@@ -29,7 +30,13 @@ export const router = createBrowserRouter([
         children: [
           {
             path: 'dashboard',
-            element: <DashboardPage />,
+            element: <AppLayout />,
+            children: [
+              {
+                index: true,
+                element: <DashboardPage />,
+              },
+            ],
           },
         ],
       },
