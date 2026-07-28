@@ -109,8 +109,8 @@ export function HourlySummaryTable({
           Hourly Production &amp; Downtime Summary
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          All timestamps are shown in IST. Runtime, downtime, and stoppage minutes are split
-          across hourly boundaries.
+          All timestamps are shown in IST. Runtime, unplanned production, downtime, and stoppage
+          minutes are split across hourly boundaries.
         </Typography>
       </Box>
 
@@ -180,6 +180,11 @@ export function HourlySummaryTable({
               {
                 label: 'Runtime (min)',
                 getValue: (row: (typeof rows)[number]) => row.runtimeMinutes,
+                emphasize: false,
+              },
+              {
+                label: 'Unplanned Production (min)',
+                getValue: (row: (typeof rows)[number]) => row.unplannedProductionMinutes,
                 emphasize: false,
               },
               {

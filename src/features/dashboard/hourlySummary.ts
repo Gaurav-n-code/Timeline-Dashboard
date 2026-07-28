@@ -23,6 +23,7 @@ export type HourlySummaryRow = {
   hourEndMs: number;
   label: string;
   runtimeMinutes: number;
+  unplannedProductionMinutes: number;
   unknownDowntimeMinutes: number;
   stoppageMinutes: number;
   passCount: number;
@@ -76,6 +77,7 @@ function createHourRows(startUtcMs: number, endUtcMs: number) {
       hourEndMs: hourStartUtcMs + HOUR_MS,
       label: formatIstHourRange(hourStartUtcMs),
       runtimeMinutes: 0,
+      unplannedProductionMinutes: 0,
       unknownDowntimeMinutes: 0,
       stoppageMinutes: 0,
       passCount: 0,
@@ -96,7 +98,7 @@ function addMinutesToRows(
   segment: ParsedTimelineSegment,
   field: keyof Pick<
     HourlySummaryRow,
-    'runtimeMinutes' | 'unknownDowntimeMinutes' | 'stoppageMinutes'
+    'runtimeMinutes' | 'unplannedProductionMinutes' | 'unknownDowntimeMinutes' | 'stoppageMinutes'
   >,
 ) {
   const segmentStartLocalMs = toLocalMs(segment.startAt.getTime());
@@ -121,6 +123,13 @@ function isUnknownDowntime(segment: ParsedTimelineSegment) {
   const rawType = segment.rawType.trim().toLowerCase();
 
   return label === 'unknown' || rawType === 'unknown';
+}
+
+function isUnplannedProductionRuntime(segment: ParsedTimelineSegment) {
+  const rawType = segment.rawType.trim().toLowerCase();
+  const label = segment.label?.trim().toLowerCase() ?? '';
+
+  return rawType.includes('unplanned production') || label.includes('unplanned production');
 }
 
 function addProduceCounts(
@@ -202,7 +211,11 @@ export function buildHourlySummaryRows(
   const rowsByStart = createHourRows(requestStartUtcMs, effectiveEndUtcMs);
 
   for (const segment of data.runtimes) {
-    addMinutesToRows(rowsByStart, segment, 'runtimeMinutes');
+    if (isUnplannedProductionRuntime(segment)) {
+      addMinutesToRows(rowsByStart, segment, 'unplannedProductionMinutes');
+    } else {
+      addMinutesToRows(rowsByStart, segment, 'runtimeMinutes');
+    }
   }
 
   for (const segment of data.downtimes) {
