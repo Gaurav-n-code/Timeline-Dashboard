@@ -64,6 +64,7 @@ const PLOT_PADDING = {
 };
 const BAND_LANES: Array<{ kind: ChartSegment['kind']; label: string; color: string }> = [
   { kind: 'runtime', label: 'Runtime', color: '#0f766e' },
+  { kind: 'unplannedProduction', label: 'Unplanned production', color: '#2563eb' },
   { kind: 'downtime', label: 'Downtime', color: '#d97706' },
   { kind: 'stoppage', label: 'Stoppage', color: '#dc2626' },
 ];
@@ -249,9 +250,9 @@ function drawChart(
 
   context.fillStyle = '#0f172a';
   context.font = '600 12px Inter, system-ui, sans-serif';
-  context.fillText('Runtime', 20, getLaneY(0) + 17);
-  context.fillText('Downtime', 20, getLaneY(1) + 17);
-  context.fillText('Stoppage', 20, getLaneY(2) + 17);
+  for (const lane of BAND_LANES) {
+    context.fillText(lane.label, 20, getLaneY(BAND_LANES.findIndex((entry) => entry.kind === lane.kind)) + 17);
+  }
   context.fillText('Produces', 20, getMarkerLaneY('PASS') - 6);
 
   context.strokeStyle = GRID_COLOR;
@@ -315,13 +316,18 @@ function drawChart(
     '#0f766e',
   );
   drawSegments(
-    model.segments.filter((segment) => segment.kind === 'downtime'),
+    model.segments.filter((segment) => segment.kind === 'unplannedProduction'),
     1,
+    '#2563eb',
+  );
+  drawSegments(
+    model.segments.filter((segment) => segment.kind === 'downtime'),
+    2,
     '#d97706',
   );
   drawSegments(
     model.segments.filter((segment) => segment.kind === 'stoppage'),
-    2,
+    3,
     '#dc2626',
   );
 
@@ -818,6 +824,11 @@ export function TimelineChart({
         alignItems="center"
       >
         <Chip label="Runtime" size="small" sx={{ bgcolor: 'rgba(15, 118, 110, 0.12)' }} />
+        <Chip
+          label="Unplanned production"
+          size="small"
+          sx={{ bgcolor: 'rgba(37, 99, 235, 0.12)' }}
+        />
         <Chip label="Downtime" size="small" sx={{ bgcolor: 'rgba(217, 119, 6, 0.12)' }} />
         <Chip label="Stoppage" size="small" sx={{ bgcolor: 'rgba(220, 38, 38, 0.12)' }} />
         <Chip label="PASS markers" size="small" sx={{ bgcolor: 'rgba(22, 163, 74, 0.12)' }} />

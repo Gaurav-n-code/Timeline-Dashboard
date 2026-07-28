@@ -1,6 +1,6 @@
 import type { MachineIntervalsRequest, ParsedMachineIntervals } from './timelineApi';
 
-export type ChartSegmentKind = 'runtime' | 'downtime' | 'stoppage';
+export type ChartSegmentKind = 'runtime' | 'unplannedProduction' | 'downtime' | 'stoppage';
 
 export type ChartSegment = {
   kind: ChartSegmentKind;
@@ -83,10 +83,12 @@ function getDataExtentMs(data: ParsedMachineIntervals) {
 
 function buildSegments(
   items: ParsedMachineIntervals['runtimes'],
-  kind: ChartSegmentKind,
 ) {
   return items.map((segment) => ({
-    kind,
+    kind:
+      segment.rawType.trim().toLowerCase().includes('unplanned production')
+        ? ('unplannedProduction' as const)
+        : ('runtime' as const),
     startMs: segment.startAt.getTime(),
     endMs: segment.endAt.getTime(),
     label: segment.label,
@@ -174,9 +176,21 @@ export function buildTimelineChartModel(
   const fullStartMs = dataExtent ? Math.min(requestedStartMs, dataExtent.startMs) : requestedStartMs;
   const fullEndMs = dataExtent ? Math.max(requestedEndMs, dataExtent.endMs) : requestedEndMs;
   const segments = [
-    ...buildSegments(data.runtimes, 'runtime'),
-    ...buildSegments(data.downtimes, 'downtime'),
-    ...buildSegments(data.stoppages, 'stoppage'),
+    ...buildSegments(data.runtimes),
+    ...data.downtimes.map((segment) => ({
+      kind: 'downtime' as const,
+      startMs: segment.startAt.getTime(),
+      endMs: segment.endAt.getTime(),
+      label: segment.label,
+      rawType: segment.rawType,
+    })),
+    ...data.stoppages.map((segment) => ({
+      kind: 'stoppage' as const,
+      startMs: segment.startAt.getTime(),
+      endMs: segment.endAt.getTime(),
+      label: segment.label,
+      rawType: segment.rawType,
+    })),
   ].sort((left, right) => left.startMs - right.startMs);
 
   const safeFullStartMs = Number.isFinite(fullStartMs) ? fullStartMs : requestedStartMs;
