@@ -14,12 +14,12 @@ import {
   Typography,
 } from '@mui/material';
 import { getAssetsTreeRequest, getShiftsRequest } from '../features/dashboard/dashboardApi';
-import { getTodayDateValue } from '../features/dashboard/dateUtils';
+import { getDefaultTimelineDateValue } from '../features/dashboard/dateUtils';
 import { flattenAssetTree } from '../features/dashboard/dashboardUtils';
+import { TimelineChart } from '../features/dashboard/TimelineChart';
 import {
   buildMachineIntervalsRequest,
   getMachineIntervalsRequest,
-  isMachineIntervalsEmpty,
   parseMachineIntervalsResponse,
   type ParsedMachineIntervals,
 } from '../features/dashboard/timelineApi';
@@ -54,10 +54,6 @@ function getTimelineErrorMessage(error: unknown) {
   return 'Failed to load timeline data.';
 }
 
-function formatUtcRangeLabel(fromTs: string, toTs: string) {
-  return `${fromTs} to ${toTs}`;
-}
-
 export function DashboardPage() {
   const [assets, setAssets] = useState<AssetTreeNode[]>([]);
   const [shifts, setShifts] = useState<ShiftDefinition[]>([]);
@@ -67,7 +63,7 @@ export function DashboardPage() {
   const [filterState, setFilterState] = useState<FilterState>({
     assetId: '',
     shiftId: '',
-    date: getTodayDateValue(),
+    date: getDefaultTimelineDateValue(),
     showIndividualProduces: false,
   });
 
@@ -98,10 +94,6 @@ export function DashboardPage() {
 
   const selectedShiftLabel = selectedShift
     ? `${selectedShift.name} (${selectedShift.shift_timings[0]} - ${selectedShift.shift_timings[1]})`
-    : '';
-
-  const selectedRequestWindow = timelineRequest
-    ? formatUtcRangeLabel(timelineRequest.time_range.from_ts, timelineRequest.time_range.to_ts)
     : '';
 
   const loadFilterData = useCallback(async ({ isManualRefresh = false } = {}) => {
@@ -181,7 +173,14 @@ export function DashboardPage() {
 
         const parsed = parseMachineIntervalsResponse(response);
 
-        if (isMachineIntervalsEmpty(parsed)) {
+        if (
+          parsed.machineIds.length === 0 &&
+          parsed.runtimes.length === 0 &&
+          parsed.downtimes.length === 0 &&
+          parsed.stoppages.length === 0 &&
+          parsed.produceCounts.length === 0 &&
+          parsed.produces.length === 0
+        ) {
           setTimelineData(parsed);
           setTimelineStatus('empty');
           return;
@@ -236,82 +235,6 @@ export function DashboardPage() {
 
   function handleRetryTimeline() {
     setTimelineRetryCount((current) => current + 1);
-  }
-
-  function renderTimelineContent() {
-    if (timelineStatus === 'idle') {
-      return (
-        <Alert severity="info">
-          Select a machine, shift, and date to load the machine intervals response.
-        </Alert>
-      );
-    }
-
-    if (timelineStatus === 'loading') {
-      return (
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <CircularProgress size={20} />
-          <Typography variant="body2" color="text.secondary">
-            Loading machine intervals...
-          </Typography>
-        </Stack>
-      );
-    }
-
-    if (timelineStatus === 'error') {
-      return (
-        <Stack spacing={2}>
-          <Alert severity="error">{timelineError}</Alert>
-          <Box>
-            <Button variant="outlined" onClick={handleRetryTimeline}>
-              Retry
-            </Button>
-          </Box>
-        </Stack>
-      );
-    }
-
-    if (timelineStatus === 'empty') {
-      return (
-        <Alert severity="info">
-          No timeline data was returned for the selected filter combination.
-        </Alert>
-      );
-    }
-
-    if (!timelineData) {
-      return null;
-    }
-
-    return (
-      <Stack spacing={1.5}>
-        <Alert severity="success">Timeline data loaded successfully.</Alert>
-
-        <Stack spacing={0.75}>
-          <Typography variant="body2" color="text.secondary">
-            Request window: {selectedRequestWindow}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Machine IDs: {timelineData.machineIds.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Runtime segments: {timelineData.runtimes.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Downtime segments: {timelineData.downtimes.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Stoppage segments: {timelineData.stoppages.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Produce count buckets: {timelineData.produceCounts.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Individual produces parsed: {timelineData.produces.length}
-          </Typography>
-        </Stack>
-      </Stack>
-    );
   }
 
   return (
@@ -460,10 +383,14 @@ export function DashboardPage() {
         }}
       >
         <Stack spacing={2}>
-          <Typography variant="h6" fontWeight={700}>
-            Machine Intervals
-          </Typography>
-          {renderTimelineContent()}
+          <TimelineChart
+            request={timelineRequest}
+            data={timelineData}
+            status={timelineStatus}
+            error={timelineError}
+            showIndividualProduces={filterState.showIndividualProduces}
+            onRetry={handleRetryTimeline}
+          />
         </Stack>
       </Paper>
     </Stack>

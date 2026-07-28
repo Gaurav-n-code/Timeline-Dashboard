@@ -1,4 +1,5 @@
 const IST_TIME_ZONE = 'Asia/Kolkata';
+const DEFAULT_TIMELINE_DATE = '2026-06-23';
 
 export function formatDateForInputInTimeZone(date: Date, timeZone = IST_TIME_ZONE) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -15,4 +16,8 @@ export function formatDateForInputInTimeZone(date: Date, timeZone = IST_TIME_ZON
 
 export function getTodayDateValue() {
   return formatDateForInputInTimeZone(new Date());
+}
+
+export function getDefaultTimelineDateValue() {
+  return DEFAULT_TIMELINE_DATE;
 }
