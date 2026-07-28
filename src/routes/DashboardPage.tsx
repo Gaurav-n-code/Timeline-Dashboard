@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { getAssetsTreeRequest, getShiftsRequest } from '../features/dashboard/dashboardApi';
+import { HourlySummaryTable } from '../features/dashboard/HourlySummaryTable';
 import { getDefaultTimelineDateValue } from '../features/dashboard/dateUtils';
 import { flattenAssetTree } from '../features/dashboard/dashboardUtils';
 import { TimelineChart } from '../features/dashboard/TimelineChart';
@@ -392,6 +393,24 @@ export function DashboardPage() {
             onRetry={handleRetryTimeline}
           />
         </Stack>
+      </Paper>
+
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 2.5, sm: 3 },
+          borderRadius: 4,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <HourlySummaryTable
+          request={timelineRequest}
+          data={timelineData}
+          status={timelineStatus}
+          error={timelineError}
+          onRetry={handleRetryTimeline}
+        />
       </Paper>
     </Stack>
   );
