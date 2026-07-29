@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient } from '../../lib/api/client';
+import { getApiErrorStatus } from '../../lib/api/errorUtils';
 import { AuthContext } from './authContextValue';
 import { clearStoredToken, getStoredToken, storeToken } from './tokenStorage';
 import { getCurrentUserRequest, loginRequest, logoutRequest } from './authApi';
@@ -25,7 +26,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const responseInterceptor = apiClient.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error?.response?.status === 401) {
+        if (getApiErrorStatus(error) === 401) {
           clearSession();
         }
 
