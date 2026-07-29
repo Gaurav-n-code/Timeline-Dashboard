@@ -61,6 +61,21 @@ function clampToRange(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function clampSegmentToEnd(segment: ParsedTimelineSegment, endUtcMs: number) {
+  const segmentStartUtcMs = segment.startAt.getTime();
+  const segmentEndUtcMs = segment.endAt.getTime();
+
+  if (segmentStartUtcMs >= endUtcMs) {
+    return null;
+  }
+
+  return {
+    ...segment,
+    startAt: segment.startAt,
+    endAt: new Date(Math.min(segmentEndUtcMs, endUtcMs)),
+  };
+}
+
 function createHourRows(startUtcMs: number, endUtcMs: number) {
   const rowsByStart = new Map<number, HourlySummaryRow>();
   const firstHourStartLocalMs = floorToLocalHourMs(startUtcMs);
@@ -135,9 +150,14 @@ function isUnplannedProductionRuntime(segment: ParsedTimelineSegment) {
 function addProduceCounts(
   rowsByStart: Map<number, HourlySummaryRow>,
   data: ParsedMachineIntervals,
+  maxUtcMs: number,
 ) {
   for (const bucket of data.produceCounts) {
     const bucketStartUtcMs = new Date(bucket.bucket_start).getTime();
+    if (bucketStartUtcMs >= maxUtcMs) {
+      continue;
+    }
+
     const bucketStartLocalMs = floorToLocalHourMs(bucketStartUtcMs);
     const row = rowsByStart.get(bucketStartLocalMs);
 
@@ -151,12 +171,20 @@ function addProduceCounts(
   }
 }
 
-function addProduceFallback(rowsByStart: Map<number, HourlySummaryRow>, data: ParsedMachineIntervals) {
+function addProduceFallback(
+  rowsByStart: Map<number, HourlySummaryRow>,
+  data: ParsedMachineIntervals,
+  maxUtcMs: number,
+) {
   if (data.produceCounts.length > 0) {
     return;
   }
 
   for (const produce of data.produces) {
+    if (produce.firstSeenAt.getTime() >= maxUtcMs) {
+      continue;
+    }
+
     const hourStartLocalMs = floorToLocalHourMs(produce.firstSeenAt.getTime());
     const row = rowsByStart.get(hourStartLocalMs);
 
@@ -177,8 +205,13 @@ function addProduceFallback(rowsByStart: Map<number, HourlySummaryRow>, data: Pa
 function addCycleMetrics(
   rowsByStart: Map<number, HourlySummaryRow>,
   cycleMetrics: ParsedHourlyCycleMetricsBucket[] | null | undefined,
+  maxUtcMs: number,
 ) {
   for (const metric of cycleMetrics ?? []) {
+    if (metric.bucketStartMs >= maxUtcMs) {
+      continue;
+    }
+
     const rowStartLocalMs = floorToLocalHourMs(metric.bucketStartMs);
     const row = rowsByStart.get(rowStartLocalMs);
 
@@ -208,29 +241,47 @@ export function buildHourlySummaryRows(
     return [];
   }
 
-  const rowsByStart = createHourRows(requestStartUtcMs, effectiveEndUtcMs);
+  const rowsByStart = createHourRows(requestStartUtcMs, requestEndUtcMs);
 
   for (const segment of data.runtimes) {
+    const boundedSegment = clampSegmentToEnd(segment, effectiveEndUtcMs);
+
+    if (!boundedSegment) {
+      continue;
+    }
+
     if (isUnplannedProductionRuntime(segment)) {
-      addMinutesToRows(rowsByStart, segment, 'unplannedProductionMinutes');
+      addMinutesToRows(rowsByStart, boundedSegment, 'unplannedProductionMinutes');
     } else {
-      addMinutesToRows(rowsByStart, segment, 'runtimeMinutes');
+      addMinutesToRows(rowsByStart, boundedSegment, 'runtimeMinutes');
     }
   }
 
   for (const segment of data.downtimes) {
     if (isUnknownDowntime(segment)) {
-      addMinutesToRows(rowsByStart, segment, 'unknownDowntimeMinutes');
+      const boundedSegment = clampSegmentToEnd(segment, effectiveEndUtcMs);
+
+      if (!boundedSegment) {
+        continue;
+      }
+
+      addMinutesToRows(rowsByStart, boundedSegment, 'unknownDowntimeMinutes');
     }
   }
 
   for (const segment of data.stoppages) {
-    addMinutesToRows(rowsByStart, segment, 'stoppageMinutes');
+    const boundedSegment = clampSegmentToEnd(segment, effectiveEndUtcMs);
+
+    if (!boundedSegment) {
+      continue;
+    }
+
+    addMinutesToRows(rowsByStart, boundedSegment, 'stoppageMinutes');
   }
 
-  addProduceCounts(rowsByStart, data);
-  addProduceFallback(rowsByStart, data);
-  addCycleMetrics(rowsByStart, cycleMetrics);
+  addProduceCounts(rowsByStart, data, effectiveEndUtcMs);
+  addProduceFallback(rowsByStart, data, effectiveEndUtcMs);
+  addCycleMetrics(rowsByStart, cycleMetrics, effectiveEndUtcMs);
 
   return [...rowsByStart.values()].sort((left, right) => left.hourStartMs - right.hourStartMs);
 }

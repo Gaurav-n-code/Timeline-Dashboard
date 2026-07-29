@@ -10,10 +10,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { isAxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/useAuth';
-import { getApiErrorMessage } from '../lib/api/errorUtils';
+import { getApiErrorMessage, getApiErrorStatus } from '../lib/api/errorUtils';
 
 type LoginFormState = {
   username: string;
@@ -25,7 +24,7 @@ type FieldErrors = Partial<Record<keyof LoginFormState, string>>;
 function getErrorMessage(error: unknown) {
   const message = getApiErrorMessage(error, 'Unable to sign in. Please try again.');
 
-  if (isAxiosError(error) && error.response?.status === 401) {
+  if (getApiErrorStatus(error) === 401) {
     return 'Invalid username or password.';
   }
 
