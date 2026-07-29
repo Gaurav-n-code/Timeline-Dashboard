@@ -737,7 +737,8 @@ export function TimelineChart({
             color="primary"
             variant="outlined"
           />
-          <Button variant="outlined" onClick={resetZoom} disabled={!canResetZoom}>
+          <Button variant="outlined"  size="small"
+            color="primary" onClick={resetZoom} disabled={!canResetZoom} style={{fontSize: 12, height: 24,}}>
             Reset zoom
           </Button>
         </Stack>

@@ -141,6 +141,10 @@ export function HourlySummaryTable({
                   bgcolor: 'background.paper',
                   minWidth: 180,
                   fontWeight: 700,
+                  "@media (max-width: 767px)": {
+                    minWidth: 100,
+                    width: 100,
+                  }
                 }}
               >
                 Metric
@@ -217,6 +221,9 @@ export function HourlySummaryTable({
                     bgcolor: metric.emphasize ? 'action.hover' : 'background.paper',
                     fontWeight: metric.emphasize ? 700 : 600,
                     whiteSpace: 'nowrap',
+                    "@media (max-width: 767px)": {
+                      whiteSpace: 'wrap',
+                    }
                   }}
                 >
                   {metric.label}

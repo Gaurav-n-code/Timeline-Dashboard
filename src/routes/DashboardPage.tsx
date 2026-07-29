@@ -443,6 +443,7 @@ export function DashboardPage() {
               variant="outlined"
               onClick={handleRefreshAnalytics}
               disabled={timelineStatus === 'loading' || cycleMetricsStatus === 'loading'}
+              style={{fontSize: 12, height: 24,}}
             >
               {timelineStatus === 'loading' || cycleMetricsStatus === 'loading'
                 ? 'Refreshing...'
